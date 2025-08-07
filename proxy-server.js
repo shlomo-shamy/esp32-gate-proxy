@@ -14,22 +14,14 @@ console.log('🎯 Target Railway Server:', RAILWAY_SERVER);
 console.log('🌐 Proxy Port:', PROXY_PORT, '(Railway assigned)');
 console.log('🔧 Environment:', process.env.NODE_ENV || 'development');
 
-// FIXED: Single middleware for handling ESP32 cellular requests
+// In your Railway proxy-server.js, add this middleware BEFORE other routes:
 app.use((req, res, next) => {
-  // Check if request is from ESP32 cellular (look for specific headers or user-agent)
-  const isESP32 = req.headers['user-agent'] && 
-                  (req.headers['user-agent'].includes('ESP32') || 
-                   req.headers['user-agent'].includes('TinyGSM') ||
-                   req.headers['user-agent'].includes('Gate-Controller'));
-  
-  if (isESP32) {
-    // Allow ESP32 requests through without redirect
-    console.log('📱 ESP32 cellular request detected, allowing HTTP');
-    console.log('📱 User-Agent:', req.headers['user-agent']);
+  // Accept HTTP requests from cellular without redirecting
+  if (req.headers['user-agent'] && req.headers['user-agent'].includes('ESP32')) {
+    // Allow HTTP for ESP32 requests
     next();
-  } else if (req.header('x-forwarded-proto') !== 'https' && process.env.NODE_ENV === 'production') {
-    // Redirect browsers to HTTPS but not ESP32 (only in production)
-    console.log('🔄 Redirecting browser to HTTPS');
+  } else if (req.header('x-forwarded-proto') !== 'https') {
+    // Redirect browsers to HTTPS but not ESP32
     res.redirect(301, `https://${req.header('host')}${req.url}`);
   } else {
     next();
@@ -40,7 +32,7 @@ app.use((req, res, next) => {
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'User-Agent']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 app.use(express.json({ limit: '10mb' }));
@@ -95,11 +87,6 @@ const proxyOptions = {
       console.log(`🔐 Auth: ${req.headers.authorization.substring(0, 20)}...`);
     }
     
-    // Log if ESP32 request
-    if (req.headers['user-agent'] && req.headers['user-agent'].includes('ESP32')) {
-      console.log(`📱 ESP32 User-Agent: ${req.headers['user-agent']}`);
-    }
-    
     // Log body for POST requests
     if (req.method === 'POST' && req.body) {
       console.log(`📦 Body:`, JSON.stringify(req.body, null, 2));
@@ -113,11 +100,6 @@ const proxyOptions = {
     // Log response headers for debugging
     if (proxyRes.statusCode >= 400) {
       console.log(`❌ Error Response Headers:`, proxyRes.headers);
-    }
-    
-    // Log successful ESP32 responses
-    if (req.headers['user-agent'] && req.headers['user-agent'].includes('ESP32') && proxyRes.statusCode === 200) {
-      console.log(`✅ ESP32 request successful: ${req.method} ${req.url}`);
     }
   },
   
@@ -157,14 +139,23 @@ app.get('/', (req, res) => {
   });
 });
 
-// Error handling middleware
-app.use((error, req, res, next) => {
-  console.error('❌ Express Error:', error);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: error.message,
-    timestamp: new Date().toISOString()
-  });
+// Replace the middleware section with this:
+app.use((req, res, next) => {
+  // Check if request is from ESP32 cellular (look for specific headers or user-agent)
+  const isESP32 = req.headers['user-agent'] && 
+                  (req.headers['user-agent'].includes('ESP32') || 
+                   req.headers['user-agent'].includes('TinyGSM'));
+  
+  if (isESP32) {
+    // Allow ESP32 requests through without redirect
+    console.log('📱 ESP32 cellular request detected, allowing HTTP');
+    next();
+  } else if (req.header('x-forwarded-proto') !== 'https') {
+    // Redirect browsers to HTTPS but not ESP32
+    res.redirect(301, `https://${req.header('host')}${req.url}`);
+  } else {
+    next();
+  }
 });
 
 // Start server
