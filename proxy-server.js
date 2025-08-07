@@ -14,6 +14,20 @@ console.log('🎯 Target Railway Server:', RAILWAY_SERVER);
 console.log('🌐 Proxy Port:', PROXY_PORT, '(Railway assigned)');
 console.log('🔧 Environment:', process.env.NODE_ENV || 'development');
 
+// In your Railway proxy-server.js, add this middleware BEFORE other routes:
+app.use((req, res, next) => {
+  // Accept HTTP requests from cellular without redirecting
+  if (req.headers['user-agent'] && req.headers['user-agent'].includes('ESP32')) {
+    // Allow HTTP for ESP32 requests
+    next();
+  } else if (req.header('x-forwarded-proto') !== 'https') {
+    // Redirect browsers to HTTPS but not ESP32
+    res.redirect(301, `https://${req.header('host')}${req.url}`);
+  } else {
+    next();
+  }
+});
+
 // Middleware
 app.use(cors({
   origin: '*',
